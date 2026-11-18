@@ -1,6 +1,5 @@
 package ba.cncmikron.tastatura;
 
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.inputmethodservice.InputMethodService;
 import android.text.InputType;
@@ -23,6 +22,8 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
 
     private KeyboardView keyboard;
     private final TextView[] slots = new TextView[3];
+    private final View[] dividers = new View[2];
+    private LinearLayout rootView;
     private UserStore store;
 
     /** Rijec koja se trenutno kuca (podvucena u polju). */
@@ -45,7 +46,7 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
         float dp = getResources().getDisplayMetrics().density;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF1C1D20);
+        rootView = root;
 
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -63,6 +64,13 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
                     pickSuggestion(idx);
                 }
             });
+            if (i > 0) {
+                View d = new View(this);
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams((int) Math.max(1, dp), (int) (20 * dp));
+                dl.gravity = Gravity.CENTER_VERTICAL;
+                bar.addView(d, dl);
+                dividers[i - 1] = d;
+            }
             bar.addView(tv, new LinearLayout.LayoutParams(0, (int) (44 * dp), 1f));
             slots[i] = tv;
         }
@@ -73,6 +81,8 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
 
         keyboard = new KeyboardView(this);
         keyboard.setListener(this);
+        store.applyLook(keyboard);
+        applyBarTheme();
         root.addView(keyboard, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         return root;
@@ -85,7 +95,8 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
         clearLastCorrection();
         mode = store.correctionMode();
         keyboard.setVibrate(store.vibrate());
-        keyboard.setHeightScale(store.heightPercent() / 100f);
+        store.applyLook(keyboard);
+        applyBarTheme();
 
         int cls = info.inputType & InputType.TYPE_MASK_CLASS;
         int var = info.inputType & InputType.TYPE_MASK_VARIATION;
@@ -308,7 +319,18 @@ public class KeyboardService extends InputMethodService implements KeyboardView.
         slots[0].setText(left);
         slots[1].setText(mid);
         slots[2].setText(right);
-        slots[1].setTextColor(lastCorrected != null ? 0xFF8FB4FF : Color.WHITE);
+        Theme t = keyboard != null ? keyboard.getTheme() : Theme.ALL[0];
+        slots[1].setTextColor(lastCorrected != null ? t.suggestion : t.text);
+    }
+
+    private void applyBarTheme() {
+        if (rootView == null || keyboard == null) return;
+        Theme t = keyboard.getTheme();
+        rootView.setBackgroundColor(t.bg);
+        for (TextView tv : slots) tv.setTextColor(t.text);
+        slots[0].setTextColor(t.textDim);
+        slots[2].setTextColor(t.textDim);
+        for (View d : dividers) d.setBackgroundColor((t.textDim & 0x00FFFFFF) | 0x55000000);
     }
 
     private void pickSuggestion(int idx) {

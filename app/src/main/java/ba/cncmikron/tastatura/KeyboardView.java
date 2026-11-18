@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.HapticFeedbackConstants;
@@ -56,7 +57,9 @@ public class KeyboardView extends View {
         return new Key("", -1, w, null, 0);
     }
 
+    private final List<List<Key>> lettersBase = new ArrayList<>();
     private final List<List<Key>> letters = new ArrayList<>();
+    private List<Key> numRow;
     private final List<List<Key>> sym1 = new ArrayList<>();
     private final List<List<Key>> sym2 = new ArrayList<>();
     private List<List<Key>> rows;
@@ -69,6 +72,14 @@ public class KeyboardView extends View {
     private Listener listener;
     private boolean vibrate = true;
     private float heightScale = 1f;
+
+    // izgled
+    private Theme theme = Theme.ALL[0];
+    private int shape = Theme.SHAPE_ROUND;
+    private float gapDp = 3f;
+    private float fontScale = 1f;
+    private boolean numberRow, keyPreview = true, altHints = true, shadows = true;
+    private final RectF tmp = new RectF();
 
     private final Paint keyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -113,7 +124,8 @@ public class KeyboardView extends View {
         buildLayers();
         rows = letters;
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setColor(0xFFF2F2F2);
+        textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        rebuildLetters();
     }
 
     private void buildLayers() {
@@ -128,10 +140,11 @@ public class KeyboardView extends View {
         r3.add(new Key("⇧", T_SHIFT, 1.5f, null, 0));
         for (char c : "yxcvbnm".toCharArray()) r3.add(ch(String.valueOf(c), alt(c)));
         r3.add(new Key("⌫", T_DEL, 1.5f, null, 0));
-        letters.add(r1);
-        letters.add(r2);
-        letters.add(r3);
-        letters.add(bottomRow("?123", LAYER_SYM1));
+        lettersBase.add(r1);
+        lettersBase.add(r2);
+        lettersBase.add(r3);
+        lettersBase.add(bottomRow("?123", LAYER_SYM1));
+        numRow = row("1 2 3 4 5 6 7 8 9 0");
 
         // znakovi 1
         sym1.add(row("1 2 3 4 5 6 7 8 9 0"));
@@ -175,7 +188,7 @@ public class KeyboardView extends View {
         List<Key> r = new ArrayList<>();
         r.add(new Key(modeLabel, T_MODE, 1.5f, null, target));
         r.add(ch(",", ";:"));
-        r.add(new Key("ijekavica", T_SPACE, 5f, null, 0));
+        r.add(new Key("Pametna", T_SPACE, 5f, null, 0));
         r.add(ch(".", "?!"));
         r.add(new Key("↵", T_ENTER, 1.5f, null, 0));
         return r;
@@ -183,6 +196,36 @@ public class KeyboardView extends View {
 
     public void setListener(Listener l) {
         listener = l;
+    }
+
+    private void rebuildLetters() {
+        letters.clear();
+        if (numberRow) letters.add(numRow);
+        letters.addAll(lettersBase);
+    }
+
+    /** Postavi izgled (tema, oblik, razmak, slova, red sa brojevima...). */
+    public void setLook(Theme t, int shape, float gapDp, float fontScale, boolean numberRow,
+                        boolean keyPreview, boolean altHints, boolean shadows) {
+        this.theme = t;
+        this.shape = shape;
+        this.gapDp = gapDp;
+        this.fontScale = fontScale;
+        this.keyPreview = keyPreview;
+        this.altHints = altHints;
+        this.shadows = shadows;
+        if (this.numberRow != numberRow) {
+            this.numberRow = numberRow;
+            rebuildLetters();
+            if (layer == LAYER_LETTERS) rows = letters;
+            requestLayout();
+        }
+        layoutKeys();
+        invalidate();
+    }
+
+    public Theme getTheme() {
+        return theme;
     }
 
     public void setVibrate(boolean v) {
@@ -225,10 +268,17 @@ public class KeyboardView extends View {
         return shift || capsLock;
     }
 
+    /** Visina reda sa brojevima u odnosu na obican red. */
+    private static final float NUM_ROW_W = 0.8f;
+
+    private float rowUnits() {
+        return 4f + (numberRow ? NUM_ROW_W : 0f);
+    }
+
     @Override
     protected void onMeasure(int wSpec, int hSpec) {
         int w = MeasureSpec.getSize(wSpec);
-        int h = (int) (4 * 56 * dp * heightScale + 8 * dp);
+        int h = (int) (rowUnits() * 56 * dp * heightScale + 10 * dp);
         setMeasuredDimension(w, h);
     }
 
@@ -240,58 +290,108 @@ public class KeyboardView extends View {
     private void layoutKeys() {
         int w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
-        float pad = 3 * dp;
-        float rowH = (h - 8 * dp) / 4f;
+        float pad = gapDp * dp;
+        boolean num = rows == letters && numberRow;
+        float units = num ? rowUnits() : 4f;
+        float unitH = (h - 10 * dp) / units;
+        float side = 2 * dp;
+        float y = 5 * dp;
         for (int r = 0; r < rows.size(); r++) {
             List<Key> row = rows.get(r);
+            float rowH = unitH * (num && r == 0 ? NUM_ROW_W : 1f);
             float total = 0;
             for (Key k : row) total += k.weight;
             // sirina jednog tastera: kao da red ima 10 tastera (svi redovi isto poravnati)
-            float unit = w / Math.max(10f, total);
-            float x = (w - unit * total) / 2f;
-            float y = 4 * dp + r * rowH;
+            float unit = (w - 2 * side) / Math.max(10f, total);
+            float x = side + (w - 2 * side - unit * total) / 2f;
             for (Key k : row) {
                 k.rect.set(x + pad, y + pad, x + unit * k.weight - pad, y + rowH - pad);
                 x += unit * k.weight;
             }
+            y += rowH;
         }
+    }
+
+    private float radiusFor(RectF r) {
+        switch (shape) {
+            case Theme.SHAPE_SQUARE: return 2 * dp;
+            case Theme.SHAPE_PILL: return Math.min(r.width(), r.height()) / 2f;
+            default: return 8 * dp;
+        }
+    }
+
+    private int keyColor(Key k) {
+        Theme t = theme;
+        if (k.type == T_ENTER) return k == pressed ? t.accentPressed : t.accent;
+        if (k.type == T_SHIFT && capsLock) return t.accent;
+        if (k == pressed) return t.keyPressed;
+        if (k.type == T_SHIFT && shift) return t.keyPressed;
+        boolean special = k.type != T_CHAR && k.type != T_SPACE;
+        return special ? t.keySpecial : t.key;
+    }
+
+    /** Je li boja svijetla (za izbor boje sjenke i teksta na akcentu). */
+    private static boolean light(int c) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        return r * 299 + g * 587 + b * 114 > 150000;
     }
 
     @Override
     protected void onDraw(Canvas c) {
-        c.drawColor(0xFF1C1D20);
-        float radius = 7 * dp;
+        Theme t = theme;
+        c.drawColor(t.bg);
+        boolean flat = shape == Theme.SHAPE_FLAT;
         for (List<Key> row : rows) {
             for (Key k : row) {
                 if (k.type < 0) continue;
-                boolean special = k.type != T_CHAR && k.type != T_SPACE;
-                int color = special ? 0xFF33363C : 0xFF4A4E56;
-                if (k == pressed) color = 0xFF6B7180;
-                if (k.type == T_SHIFT && capsLock) color = 0xFF2F6FD6;
-                else if (k.type == T_SHIFT && shift) color = 0xFF5A6478;
-                if (k.type == T_ENTER) color = k == pressed ? 0xFF5C8EE0 : 0xFF2F6FD6;
-                keyPaint.setColor(color);
-                c.drawRoundRect(k.rect, radius, radius, keyPaint);
+                int color = keyColor(k);
+                float radius = radiusFor(k.rect);
+                boolean filled = !flat || k.type == T_ENTER || k == pressed
+                        || (k.type == T_SHIFT && (shift || capsLock));
+                if (filled) {
+                    if (shadows && !flat) {
+                        // sjenka: tamnija kopija tastera malo nize
+                        keyPaint.setColor(light(t.bg) ? 0x33000000 : 0x66000000);
+                        tmp.set(k.rect.left, k.rect.top + 1.5f * dp, k.rect.right, k.rect.bottom + 1.5f * dp);
+                        c.drawRoundRect(tmp, radius, radius, keyPaint);
+                    }
+                    keyPaint.setColor(color);
+                    c.drawRoundRect(k.rect, radius, radius, keyPaint);
+                    if (t.border != 0 && !flat && k.type != T_ENTER) {
+                        keyPaint.setStyle(Paint.Style.STROKE);
+                        keyPaint.setStrokeWidth(1 * dp);
+                        keyPaint.setColor(t.border);
+                        c.drawRoundRect(k.rect, radius, radius, keyPaint);
+                        keyPaint.setStyle(Paint.Style.FILL);
+                    }
+                }
 
                 String label = labelOf(k);
                 boolean small = k.type == T_SPACE || k.type == T_MODE || label.length() > 2;
-                textPaint.setTextSize((small ? 14 : 22) * dp * Math.min(1.1f, heightScale));
-                textPaint.setColor(k.type == T_SPACE ? 0xFF9AA0AA : 0xFFF2F2F2);
+                float size = small ? 14 : 21;
+                if (k.type == T_SHIFT || k.type == T_DEL || k.type == T_ENTER) size = 20;
+                textPaint.setTextSize(size * dp * fontScale * Math.min(1.1f, heightScale));
+                int tc = k.type == T_SPACE ? t.textDim : t.text;
+                if (k.type == T_ENTER || (k.type == T_SHIFT && capsLock)) tc = light(t.accent) ? 0xFF000000 : 0xFFFFFFFF;
+                textPaint.setColor(tc);
                 float ty = k.rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2;
                 c.drawText(label, k.rect.centerX(), ty, textPaint);
-                if (k.alts != null && k.type == T_CHAR && layer == LAYER_LETTERS && Character.isLetter(k.label.charAt(0))) {
-                    textPaint.setTextSize(10 * dp);
-                    textPaint.setColor(0xFF9AA0AA);
+                if (altHints && k.alts != null && k.type == T_CHAR && layer == LAYER_LETTERS
+                        && Character.isLetter(k.label.charAt(0))) {
+                    textPaint.setTextSize(10 * dp * fontScale);
+                    textPaint.setColor(t.textDim);
                     c.drawText(caseOf(k.alts.substring(0, 1)), k.rect.right - 7 * dp, k.rect.top + 12 * dp, textPaint);
                 }
             }
         }
         if (longPressShown && pressed != null) drawPopup(c);
+        else if (keyPreview && pressed != null && pressed.type == T_CHAR) drawPreview(c);
     }
 
     private String labelOf(Key k) {
         if (k.type == T_ENTER) return enterLabel;
         if (k.type == T_CHAR) return caseOf(k.label);
+        if (k.type == T_SHIFT) return capsLock ? "⇪" : "⇧";
         return k.label;
     }
 
@@ -299,26 +399,67 @@ public class KeyboardView extends View {
         return isShifted() ? s.toUpperCase(Locale.ROOT) : s;
     }
 
+    /** Uvecano slovo iznad prsta dok je taster pritisnut. */
+    private void drawPreview(Canvas c) {
+        RectF k = pressed.rect;
+        float w = k.width() * 1.35f, h = k.height() * 1.25f;
+        float left = Math.max(2 * dp, Math.min(k.centerX() - w / 2, getWidth() - w - 2 * dp));
+        float top = k.top - h - 4 * dp;
+        if (top < 0) {
+            // nema mjesta iznad (gornji red): uvecan taster preko samog tastera
+            top = 0;
+            h = Math.max(h, k.bottom + 2 * dp);
+        }
+        tmp.set(left, top, left + w, top + h);
+        drawBubble(c, tmp);
+        textPaint.setTextSize(30 * dp * fontScale);
+        textPaint.setColor(theme.text);
+        float ty = tmp.centerY() - (textPaint.descent() + textPaint.ascent()) / 2;
+        c.drawText(caseOf(pressed.label), tmp.centerX(), ty, textPaint);
+    }
+
+    private void drawBubble(Canvas c, RectF r) {
+        float rad = shape == Theme.SHAPE_SQUARE ? 3 * dp : 10 * dp;
+        popupPaint.setColor(light(theme.bg) ? 0x40000000 : 0x80000000);
+        tmp2.set(r.left, r.top + 2 * dp, r.right, r.bottom + 2 * dp);
+        c.drawRoundRect(tmp2, rad, rad, popupPaint);
+        popupPaint.setColor(theme.popup);
+        c.drawRoundRect(r, rad, rad, popupPaint);
+        if (theme.border != 0) {
+            popupPaint.setStyle(Paint.Style.STROKE);
+            popupPaint.setStrokeWidth(1 * dp);
+            popupPaint.setColor(theme.border);
+            c.drawRoundRect(r, rad, rad, popupPaint);
+            popupPaint.setStyle(Paint.Style.FILL);
+        }
+    }
+
+    private final RectF tmp2 = new RectF();
+
     private void layoutPopup() {
-        float kw = pressed.rect.width();
+        float kw = pressed.rect.width() * 1.1f;
         float w = kw * pressed.alts.length();
-        float left = Math.max(2 * dp, Math.min(pressed.rect.left, getWidth() - w - 2 * dp));
-        float topY = Math.max(0, pressed.rect.top - pressed.rect.height() - 4 * dp);
-        popupRect.set(left, topY, left + w, topY + pressed.rect.height());
+        float left = Math.max(2 * dp, Math.min(pressed.rect.centerX() - kw / 2, getWidth() - w - 2 * dp));
+        float h = pressed.rect.height() * 1.15f;
+        float topY = Math.max(0, pressed.rect.top - h - 4 * dp);
+        popupRect.set(left, topY, left + w, topY + h);
     }
 
     private void drawPopup(Canvas c) {
         float kw = popupRect.width() / pressed.alts.length();
-        popupPaint.setColor(0xFF2A2D33);
-        c.drawRoundRect(popupRect, 8 * dp, 8 * dp, popupPaint);
+        drawBubble(c, popupRect);
+        float in = 3 * dp;
         for (int i = 0; i < pressed.alts.length(); i++) {
-            RectF r = new RectF(popupRect.left + i * kw, popupRect.top, popupRect.left + (i + 1) * kw, popupRect.bottom);
-            if (i == popupIndex) {
-                popupPaint.setColor(0xFF2F6FD6);
-                c.drawRoundRect(r, 8 * dp, 8 * dp, popupPaint);
+            RectF r = new RectF(popupRect.left + i * kw + in, popupRect.top + in,
+                    popupRect.left + (i + 1) * kw - in, popupRect.bottom - in);
+            boolean sel = i == popupIndex;
+            if (sel) {
+                float rad = shape == Theme.SHAPE_SQUARE ? 2 * dp : 8 * dp;
+                popupPaint.setColor(theme.accent);
+                c.drawRoundRect(r, rad, rad, popupPaint);
             }
-            textPaint.setTextSize(22 * dp);
-            textPaint.setColor(0xFFFFFFFF);
+            textPaint.setTextSize(24 * dp * fontScale);
+            textPaint.setColor(sel ? (light(theme.accent) ? 0xFF000000 : 0xFFFFFFFF) : theme.text);
             float ty = r.centerY() - (textPaint.descent() + textPaint.ascent()) / 2;
             c.drawText(caseOf(pressed.alts.substring(i, i + 1)), r.centerX(), ty, textPaint);
         }

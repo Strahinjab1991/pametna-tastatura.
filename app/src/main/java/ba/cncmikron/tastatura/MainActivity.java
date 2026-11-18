@@ -39,6 +39,8 @@ public class MainActivity extends Activity {
     private LinearLayout wordsBox;
     private TextView stats;
     private float dp;
+    private KeyboardView preview;
+    private LinearLayout swatches;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -81,6 +83,8 @@ public class MainActivity extends Activity {
         test.setMinLines(3);
         root.addView(test);
 
+        buildLookSection();
+
         section("Jačina ispravke");
         RadioGroup rg = new RadioGroup(this);
         String[] names = {"Isključeno", "Samo prijedlozi", "Automatski (preporučeno)"};
@@ -109,6 +113,7 @@ public class MainActivity extends Activity {
             public void onProgressChanged(SeekBar s, int v, boolean user) {
                 store.setHeightPercent(80 + v);
                 hLabel.setText((80 + v) + " %  (veći tasteri = manje promašaja)");
+                if (user) refreshPreview();
             }
 
             @Override
@@ -251,6 +256,204 @@ public class MainActivity extends Activity {
                     .append(":  ").append(l.get(i).getValue()).append(" puta (").append(pct).append(" %)\n");
         }
         stats.setText(sb.toString().trim());
+    }
+
+    // ---- izgled ----
+
+    private void buildLookSection() {
+        section("Izgled");
+        text("Pregled (promjene se vide odmah):");
+        preview = new KeyboardView(this);
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        pl.topMargin = (int) (6 * dp);
+        root.addView(preview, pl);
+        refreshPreview();
+
+        subtitle("Tema");
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        swatches = new LinearLayout(this);
+        hs.addView(swatches);
+        root.addView(hs);
+        buildSwatches();
+
+        subtitle("Oblik tastera");
+        choice(Theme.SHAPES, store.shape(), new Pick() {
+            @Override
+            public void pick(int i) {
+                store.setShape(i);
+            }
+        });
+
+        subtitle("Razmak između tastera");
+        choice(Theme.GAP_NAMES, store.gap(), new Pick() {
+            @Override
+            public void pick(int i) {
+                store.setGap(i);
+            }
+        });
+
+        subtitle("Veličina slova");
+        final TextView fLabel = text(store.fontPercent() + " %");
+        SeekBar fb = new SeekBar(this);
+        fb.setMax(50);
+        fb.setProgress(store.fontPercent() - 80);
+        fb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int v, boolean user) {
+                store.setFontPercent(80 + v);
+                fLabel.setText((80 + v) + " %");
+                if (user) refreshPreview();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar s) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar s) {
+            }
+        });
+        root.addView(fb);
+
+        check("Red sa brojevima iznad slova", store.numberRow(), new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean on) {
+                store.setNumberRow(on);
+                refreshPreview();
+            }
+        });
+        check("Uvećano slovo pri pritisku", store.keyPreview(), new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean on) {
+                store.setKeyPreview(on);
+                refreshPreview();
+            }
+        });
+        check("Prikaži kvačice na tasterima (č, ž, š, đ)", store.altHints(), new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean on) {
+                store.setAltHints(on);
+                refreshPreview();
+            }
+        });
+        check("Sjenke ispod tastera", store.shadows(), new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton b, boolean on) {
+                store.setShadows(on);
+                refreshPreview();
+            }
+        });
+    }
+
+    private void refreshPreview() {
+        if (preview != null) store.applyLook(preview);
+    }
+
+    private void buildSwatches() {
+        swatches.removeAllViews();
+        int sel = store.theme();
+        for (int i = 0; i < Theme.ALL.length; i++) {
+            final int idx = i;
+            Theme t = Theme.ALL[i];
+            LinearLayout tile = new LinearLayout(this);
+            tile.setOrientation(LinearLayout.VERTICAL);
+            tile.setGravity(Gravity.CENTER_HORIZONTAL);
+            int pd = (int) (6 * dp);
+            tile.setPadding(pd, pd, pd, pd);
+
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(t.bg);
+            bg.setCornerRadius(12 * dp);
+            bg.setStroke((int) ((i == sel ? 3 : 1) * dp), i == sel ? t.accent : 0x40808080);
+            LinearLayout box = new LinearLayout(this);
+            box.setBackground(bg);
+            box.setGravity(Gravity.CENTER);
+            int bp = (int) (8 * dp);
+            box.setPadding(bp, bp, bp, bp);
+            box.addView(dot(t.key), dotParams());
+            box.addView(dot(t.keySpecial), dotParams());
+            box.addView(dot(t.accent), dotParams());
+            tile.addView(box, new LinearLayout.LayoutParams((int) (84 * dp), (int) (48 * dp)));
+
+            TextView name = new TextView(this);
+            name.setText(t.name);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            name.setGravity(Gravity.CENTER);
+            if (i == sel) name.setTypeface(Typeface.DEFAULT_BOLD);
+            tile.addView(name);
+
+            tile.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    store.setTheme(idx);
+                    buildSwatches();
+                    refreshPreview();
+                }
+            });
+            swatches.addView(tile);
+        }
+    }
+
+    private View dot(int color) {
+        View v = new View(this);
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(4 * dp);
+        v.setBackground(d);
+        return v;
+    }
+
+    private LinearLayout.LayoutParams dotParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams((int) (16 * dp), (int) (20 * dp));
+        lp.setMargins((int) (2 * dp), 0, (int) (2 * dp), 0);
+        return lp;
+    }
+
+    private interface Pick {
+        void pick(int i);
+    }
+
+    private void choice(String[] names, int selected, final Pick p) {
+        RadioGroup g = new RadioGroup(this);
+        g.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < names.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(names[i]);
+            rb.setId(500 + i);
+            rb.setPadding(0, 0, (int) (8 * dp), 0);
+            g.addView(rb);
+        }
+        g.check(500 + selected);
+        g.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup gr, int id) {
+                p.pick(id - 500);
+                refreshPreview();
+            }
+        });
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.addView(g);
+        root.addView(hs);
+    }
+
+    private void check(String label, boolean on, CompoundButton.OnCheckedChangeListener l) {
+        CheckBox cb = new CheckBox(this);
+        cb.setText(label);
+        cb.setChecked(on);
+        cb.setOnCheckedChangeListener(l);
+        root.addView(cb);
+    }
+
+    private void subtitle(String s) {
+        TextView tv = new TextView(this);
+        tv.setText(s);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        tv.setPadding(0, (int) (12 * dp), 0, (int) (4 * dp));
+        root.addView(tv);
     }
 
     // ---- pomocne ----

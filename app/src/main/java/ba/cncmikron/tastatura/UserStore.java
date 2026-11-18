@@ -58,6 +58,40 @@ public class UserStore {
         prefs.edit().putBoolean("vibrate", v).apply();
     }
 
+    // ---- izgled ----
+
+    public int theme() { return prefs.getInt("theme", 0); }
+    public void setTheme(int v) { prefs.edit().putInt("theme", v).apply(); }
+
+    public int shape() { return prefs.getInt("shape", Theme.SHAPE_ROUND); }
+    public void setShape(int v) { prefs.edit().putInt("shape", v).apply(); }
+
+    public int gap() { return prefs.getInt("gap", 1); }
+    public void setGap(int v) { prefs.edit().putInt("gap", v).apply(); }
+
+    /** Velicina slova na tasterima u procentima (80-130). */
+    public int fontPercent() { return prefs.getInt("font", 100); }
+    public void setFontPercent(int v) { prefs.edit().putInt("font", v).apply(); }
+
+    public boolean numberRow() { return prefs.getBoolean("numrow", false); }
+    public void setNumberRow(boolean v) { prefs.edit().putBoolean("numrow", v).apply(); }
+
+    public boolean keyPreview() { return prefs.getBoolean("preview", true); }
+    public void setKeyPreview(boolean v) { prefs.edit().putBoolean("preview", v).apply(); }
+
+    public boolean altHints() { return prefs.getBoolean("hints", true); }
+    public void setAltHints(boolean v) { prefs.edit().putBoolean("hints", v).apply(); }
+
+    public boolean shadows() { return prefs.getBoolean("shadows", true); }
+    public void setShadows(boolean v) { prefs.edit().putBoolean("shadows", v).apply(); }
+
+    /** Primijeni sva podesavanja izgleda na tastaturu. */
+    public void applyLook(KeyboardView k) {
+        k.setLook(Theme.get(theme()), shape(), Theme.GAPS[Math.max(0, Math.min(2, gap()))],
+                fontPercent() / 100f, numberRow(), keyPreview(), altHints(), shadows());
+        k.setHeightScale(heightPercent() / 100f);
+    }
+
     public List<String> getWords() {
         List<String> l = new ArrayList<>(prefs.getStringSet("words", new HashSet<String>()));
         Collections.sort(l);
